@@ -1,0 +1,1465 @@
+{
+  "datasets": [
+    {
+      "name": "4ae11ac6",
+      "displayName": "companies_annual",
+      "queryLines": [
+        "SELECT\n",
+        "  company_name,\n",
+        "  initcap(company_name) AS company_display,\n",
+        "  sector,\n",
+        "  subsector,\n",
+        "  period_year,\n",
+        "  revenue,\n",
+        "  net_income,\n",
+        "  net_margin,\n",
+        "  revenue / 1000000000 AS revenue_billions,\n",
+        "  net_income / 1000000000 AS net_income_billions,\n",
+        "  CASE WHEN lower(sector) = 'healthcare' THEN 'Healthcare' ELSE 'Other' END AS sector_group,\n",
+        "  ROW_NUMBER() OVER (PARTITION BY period_year ORDER BY revenue DESC) AS rn_rev,\n",
+        "  ROW_NUMBER() OVER (PARTITION BY period_year ORDER BY net_income DESC) AS rn_net,\n",
+        "  RANK() OVER (PARTITION BY period_year, sector ORDER BY revenue DESC) AS sector_rank\n",
+        "FROM edgar.pipeline.gold_company_period\n",
+        "WHERE period_type = 'annual'\n",
+        "  AND revenue > 0\n",
+        "  AND period_year BETWEEN 2023 AND 2025"
+      ]
+    },
+    {
+      "name": "78384f93",
+      "displayName": "sector_annual",
+      "queryLines": [
+        "SELECT\n",
+        "  sector,\n",
+        "  subsector,\n",
+        "  period_year,\n",
+        "  companies,\n",
+        "  total_revenue,\n",
+        "  total_net_income,\n",
+        "  net_margin,\n",
+        "  total_revenue / 1000000000 AS total_revenue_billions,\n",
+        "  total_net_income / 1000000000 AS total_net_income_billions,\n",
+        "  total_revenue / 1000000000000 AS total_revenue_trillions,\n",
+        "  total_net_income / 1000000000000 AS total_net_income_trillions,\n",
+        "  CASE\n",
+        "    WHEN lower(sector) = 'healthcare' THEN 'Healthcare'\n",
+        "    ELSE 'Other'\n",
+        "  END AS sector_group\n",
+        "FROM\n",
+        "  edgar.pipeline.gold_sector_summary\n",
+        "WHERE\n",
+        "  period_type = 'annual'\n",
+        "  AND period_year BETWEEN 2023 AND 2025"
+      ],
+      "columns": [
+        {
+          "displayName": "healthcare_revenue_share",
+          "description": "Healthcare total revenue as a share of all sectors' revenue (ratio 0-1), computed over rows filtered by dashboard filters",
+          "expression": "SUM(CASE WHEN `sector_group` = 'Healthcare' THEN `total_revenue_billions` ELSE 0 END) / NULLIF(SUM(`total_revenue_billions`), 0)"
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "ef8033f2",
+      "displayName": "Overall",
+      "layout": [
+        {
+          "widget": {
+            "name": "total_revenue_counter",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "78384f93",
+                  "fields": [
+                    {
+                      "name": "sum(total_revenue_trillions)",
+                      "expression": "SUM(`total_revenue_trillions`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Total Revenue ($T)</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(total_revenue_trillions)",
+                  "rowNumber": 0,
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 2,
+                      "type": "max"
+                    },
+                    "hideGroupSeparator": true,
+                    "type": "number-plain"
+                  },
+                  "formatTemplate": "${{ @formatted }}T"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 4,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "companies_counter",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "78384f93",
+                  "fields": [
+                    {
+                      "name": "sum(companies)",
+                      "expression": "SUM(`companies`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Companies</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(companies)",
+                  "rowNumber": 0,
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "exact"
+                    },
+                    "type": "number-plain"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 1,
+            "width": 4,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "top15_companies_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4ae11ac6",
+                  "fields": [
+                    {
+                      "name": "sector_group",
+                      "expression": "`sector_group`"
+                    },
+                    {
+                      "name": "sum(revenue_billions)",
+                      "expression": "SUM(`revenue_billions`)"
+                    },
+                    {
+                      "name": "company_name",
+                      "expression": "`company_name`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "IN_RANGE(`rn_rev`, 1, 15)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "showDescription": false,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Top 15 Companies by Revenue ($B)</span>",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(revenue_billions)",
+                  "axis": {
+                    "title": "Revenue ($B)"
+                  },
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "displayName": "Revenue ($B)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "company_name",
+                  "axis": {
+                    "title": "Company"
+                  },
+                  "displayName": "Company",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "sector_group",
+                  "legend": {
+                    "title": "Sector"
+                  },
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#E8590C",
+                        "value": "Healthcare"
+                      },
+                      {
+                        "color": "#ADB5BD",
+                        "value": "Other"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                },
+                "label": {
+                  "show": false,
+                  "showTotal": true,
+                  "text": {
+                    "fieldName": "sum(revenue_billions)",
+                    "formatTemplate": "${{ @formatted }}B",
+                    "displayName": "Revenue ($B)"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "revenue_by_year_sector_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4ae11ac6",
+                  "fields": [
+                    {
+                      "name": "sector_group",
+                      "expression": "`sector_group`"
+                    },
+                    {
+                      "name": "avg(net_margin)",
+                      "expression": "AVG(`net_margin`)"
+                    },
+                    {
+                      "name": "company_name",
+                      "expression": "`company_name`"
+                    },
+                    {
+                      "name": "sum(revenue_billions)",
+                      "expression": "SUM(`revenue_billions`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "IN_RANGE(`rn_rev`, 1, 15)"
+                    }
+                  ],
+                  "cubeGroupingSets": {
+                    "sets": [
+                      {
+                        "fieldNames": [
+                          "sector_group"
+                        ]
+                      },
+                      {
+                        "fieldNames": [
+                          "company_name"
+                        ]
+                      }
+                    ]
+                  },
+                  "disaggregated": false,
+                  "orders": [
+                    {
+                      "direction": "DESC",
+                      "expression": "SUM(`revenue_billions`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Net Margin — Top 15 Companies by Revenue (%)</span>",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "avg(net_margin)",
+                  "axis": {
+                    "title": "Net Margin (%)"
+                  },
+                  "format": {
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-percent"
+                  },
+                  "displayName": "Net Margin (%)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "company_name",
+                  "axis": {
+                    "title": "Company"
+                  },
+                  "displayName": "Company",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "measure-reversed",
+                      "measure": {
+                        "fieldName": "sum(revenue_billions)"
+                      }
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "sector_group",
+                  "legend": {
+                    "title": "Sector"
+                  },
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#E8590C",
+                        "value": "Healthcare"
+                      },
+                      {
+                        "color": "#ADB5BD",
+                        "value": "Other"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                },
+                "label": {
+                  "show": false,
+                  "showTotal": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 3,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "data_note",
+            "spec": {
+              "version": 1,
+              "widgetType": "text",
+              "encodings": {
+                "text": {
+                  "lines": [
+                    "<span style=\"font-size:14px\">*Annual figures for fiscal periods ending in 2023-2025. Source: SEC Financial Statement Data Sets*</span>"
+                  ],
+                  "fields": []
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 19,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "f1576fd7",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "78384f93",
+                  "fields": [
+                    {
+                      "name": "sum(total_net_income_trillions)",
+                      "expression": "SUM(`total_net_income_trillions`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Total Net Income ($T)</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(total_net_income_trillions)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 2,
+                      "type": "max"
+                    },
+                    "hideGroupSeparator": true
+                  },
+                  "rowNumber": 0,
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": ">="
+                        },
+                        "foreground": "#00A972"
+                      }
+                    ]
+                  },
+                  "formatTemplate": "${{ @formatted }}T"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 1,
+            "width": 4,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "title_text",
+            "spec": {
+              "version": 1,
+              "widgetType": "text",
+              "encodings": {
+                "text": {
+                  "lines": [
+                    "## <span style=\"font-size: 24px;\">SEC EDGAR Annual Financials - Overall</span>"
+                  ],
+                  "fields": []
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "companies_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4ae11ac6",
+                  "fields": [
+                    {
+                      "name": "company_display",
+                      "expression": "`company_display`"
+                    },
+                    {
+                      "name": "sector",
+                      "expression": "`sector`"
+                    },
+                    {
+                      "name": "revenue_billions",
+                      "expression": "`revenue_billions`"
+                    },
+                    {
+                      "name": "net_income_billions",
+                      "expression": "`net_income_billions`"
+                    },
+                    {
+                      "name": "net_margin",
+                      "expression": "`net_margin`"
+                    }
+                  ],
+                  "disaggregated": true,
+                  "orders": [
+                    {
+                      "direction": "DESC",
+                      "expression": "`revenue_billions`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Company Details</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "company_display",
+                    "headerAlignment": "left",
+                    "useForSearch": true,
+                    "displayName": "Company"
+                  },
+                  {
+                    "fieldName": "sector",
+                    "headerAlignment": "left",
+                    "useForSearch": false,
+                    "displayName": "Sector"
+                  },
+                  {
+                    "fieldName": "revenue_billions",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 1,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    },
+                    "headerAlignment": "right",
+                    "useForSearch": false,
+                    "displayName": "Revenue ($B)"
+                  },
+                  {
+                    "fieldName": "net_income_billions",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 1,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    },
+                    "headerAlignment": "right",
+                    "useForSearch": false,
+                    "displayName": "Net Income ($B)"
+                  },
+                  {
+                    "fieldName": "net_margin",
+                    "format": {
+                      "decimalPlaces": {
+                        "places": 1,
+                        "type": "max"
+                      },
+                      "type": "number-percent"
+                    },
+                    "headerAlignment": "right",
+                    "useForSearch": false,
+                    "displayName": "Net Margin"
+                  }
+                ],
+                "rowOrder": [
+                  {
+                    "by": "column-reversed",
+                    "field": {
+                      "index": 2
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 12,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "healthcare",
+      "displayName": "Healthcare",
+      "layout": [
+        {
+          "widget": {
+            "name": "title_text",
+            "spec": {
+              "version": 1,
+              "widgetType": "text",
+              "encodings": {
+                "text": {
+                  "lines": [
+                    "## <span style=\"font-size: 24px;\">SEC EDGAR Annual Financials - Healthcare Sector</span>"
+                  ],
+                  "fields": []
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "healthcare_revenue_counter",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "78384f93",
+                  "fields": [
+                    {
+                      "name": "sum(total_revenue_trillions)",
+                      "expression": "SUM(`total_revenue_trillions`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`sector_group` IN ('Healthcare')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Healthcare Revenue ($T)",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(total_revenue_trillions)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": true
+                  },
+                  "formatTemplate": "${{ @formatted }}T",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 4,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "healthcare_share_counter",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "78384f93",
+                  "fields": [
+                    {
+                      "name": "measure(healthcare_revenue_share)",
+                      "expression": "MEASURE(`healthcare_revenue_share`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Healthcare Share of Revenue</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(healthcare_revenue_share)",
+                  "format": {
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-percent"
+                  },
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 1,
+            "width": 4,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "healthcare_companies_counter",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "78384f93",
+                  "fields": [
+                    {
+                      "name": "sum(companies)",
+                      "expression": "SUM(`companies`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`sector_group` IN ('Healthcare')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Healthcare Companies</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(companies)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "exact"
+                    },
+                    "type": "number-plain"
+                  },
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 1,
+            "width": 4,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "top_healthcare_revenue_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4ae11ac6",
+                  "fields": [
+                    {
+                      "name": "subsector",
+                      "expression": "`subsector`"
+                    },
+                    {
+                      "name": "sum(revenue_billions)",
+                      "expression": "SUM(`revenue_billions`)"
+                    },
+                    {
+                      "name": "company_name",
+                      "expression": "`company_name`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`sector_group` IN ('Healthcare')"
+                    },
+                    {
+                      "expression": "IN_RANGE(`sector_rank`, 1, 15)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Top Healthcare Companies by Revenue ($B)</span>",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(revenue_billions)",
+                  "axis": {
+                    "title": "Revenue ($B)"
+                  },
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "displayName": "Revenue ($B)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "company_name",
+                  "axis": {
+                    "title": "Company"
+                  },
+                  "displayName": "Company",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "subsector",
+                  "legend": {
+                    "title": "Subsector"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "label": {
+                  "show": false,
+                  "showTotal": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "healthcare_margin_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4ae11ac6",
+                  "fields": [
+                    {
+                      "name": "subsector",
+                      "expression": "`subsector`"
+                    },
+                    {
+                      "name": "avg(net_margin)",
+                      "expression": "AVG(`net_margin`)"
+                    },
+                    {
+                      "name": "company_name",
+                      "expression": "`company_name`"
+                    },
+                    {
+                      "name": "sum(revenue_billions)",
+                      "expression": "SUM(`revenue_billions`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`sector_group` IN ('Healthcare')"
+                    },
+                    {
+                      "expression": "IN_RANGE(`sector_rank`, 1, 15)"
+                    }
+                  ],
+                  "cubeGroupingSets": {
+                    "sets": [
+                      {
+                        "fieldNames": [
+                          "subsector"
+                        ]
+                      },
+                      {
+                        "fieldNames": [
+                          "company_name"
+                        ]
+                      }
+                    ]
+                  },
+                  "disaggregated": false,
+                  "orders": [
+                    {
+                      "direction": "DESC",
+                      "expression": "SUM(`revenue_billions`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Net Margin — Top Healthcare Companies by Revenue (%)</span>",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "avg(net_margin)",
+                  "axis": {
+                    "title": "Net Margin (%)"
+                  },
+                  "format": {
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-percent"
+                  },
+                  "displayName": "Net Margin (%)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "company_name",
+                  "axis": {
+                    "title": "Company"
+                  },
+                  "displayName": "Company",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "measure-reversed",
+                      "measure": {
+                        "fieldName": "sum(revenue_billions)"
+                      }
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "subsector",
+                  "legend": {
+                    "title": "Subsector"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "label": {
+                  "show": false,
+                  "showTotal": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 3,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "revenue_by_subsector_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "78384f93",
+                  "fields": [
+                    {
+                      "name": "subsector",
+                      "expression": "`subsector`"
+                    },
+                    {
+                      "name": "sum(total_revenue_billions)",
+                      "expression": "SUM(`total_revenue_billions`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`sector_group` IN ('Healthcare')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Healthcare Revenue by Subsector ($B)</span>",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(total_revenue_billions)",
+                  "axis": {
+                    "title": "Revenue ($B)"
+                  },
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "displayName": "Revenue ($B)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "subsector",
+                  "axis": {
+                    "title": "Subsector"
+                  },
+                  "displayName": "Subsector",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "subsector",
+                  "legend": {
+                    "title": "Subsector"
+                  },
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Pharma & Biotech",
+                        "color": "#00A972"
+                      },
+                      {
+                        "value": "Providers & Services",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "value": "Medical Devices",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 8
+                        }
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "margin_by_subsector_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "78384f93",
+                  "fields": [
+                    {
+                      "name": "subsector",
+                      "expression": "`subsector`"
+                    },
+                    {
+                      "name": "avg(net_margin)",
+                      "expression": "AVG(`net_margin`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`sector_group` IN ('Healthcare')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 18px;\">Net Margin by Subsector (%)</span>",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "avg(net_margin)",
+                  "axis": {
+                    "title": "Net Margin (%)"
+                  },
+                  "format": {
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-percent"
+                  },
+                  "displayName": "Net Margin (%)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "subsector",
+                  "axis": {
+                    "title": "Subsector"
+                  },
+                  "displayName": "Subsector",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "subsector",
+                  "legend": {
+                    "title": "Subsector"
+                  },
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "natural-order"
+                    },
+                    "mappings": [
+                      {
+                        "value": "Pharma & Biotech",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      },
+                      {
+                        "value": "Providers & Services",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "value": "Medical Devices",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 8
+                        }
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 10,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "91a09159",
+            "spec": {
+              "widgetType": "text",
+              "version": 1,
+              "encodings": {
+                "text": {
+                  "lines": [
+                    "<span style=\"font-size:14px\">*Healthcare = SEC SIC codes for pharma, devices, insurers, providers, and distribution.</span>&#32;&#32; <span style=\"font-size:14px\">Net margin by subsector is aggregate.*</span>"
+                  ],
+                  "fields": []
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 16,
+            "width": 12,
+            "height": 1
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "global_filters",
+      "displayName": "Global Filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "year_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1e4bdb908190cbff95dabd6fede2d/datasets/01f1e4bde8e112b39c82c5120e72f537_period_year",
+                "query": {
+                  "datasetName": "78384f93",
+                  "fields": [
+                    {
+                      "name": "period_year",
+                      "expression": "`period_year`"
+                    },
+                    {
+                      "name": "period_year_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1e4bdb908190cbff95dabd6fede2d/datasets/01f1e4bdc3f01de49b3c9667591f39a3_period_year",
+                "query": {
+                  "datasetName": "4ae11ac6",
+                  "fields": [
+                    {
+                      "name": "period_year",
+                      "expression": "`period_year`"
+                    },
+                    {
+                      "name": "period_year_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "disallowAll": true,
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "INTEGER",
+                    "values": [
+                      {
+                        "value": "2025"
+                      }
+                    ]
+                  }
+                }
+              },
+              "version": 2,
+              "scale": {
+                "type": "categorical",
+                "sort": {
+                  "by": "natural-order"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Year",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "period_year",
+                    "queryName": "dashboards/01f1e4bdb908190cbff95dabd6fede2d/datasets/01f1e4bde8e112b39c82c5120e72f537_period_year"
+                  },
+                  {
+                    "fieldName": "period_year",
+                    "queryName": "dashboards/01f1e4bdb908190cbff95dabd6fede2d/datasets/01f1e4bdc3f01de49b3c9667591f39a3_period_year"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
